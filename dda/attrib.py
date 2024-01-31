@@ -1,6 +1,6 @@
 from trak import TRAKer
 
-def get_attrib_matrix(train_dl, val_dl, model, ckpts, train_set_size, val_set_size, **kwargs):
+def get_trak_matrix(train_dl, val_dl, model, ckpts, train_set_size, val_set_size, **kwargs):
     if kwargs is None or kwargs.get('task') is None:
         task = 'image_classification'
     else:
