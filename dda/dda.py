@@ -22,6 +22,8 @@ class DDA:
         group_indices,
         train_set_size=None,
         val_set_size=None,
+        trak_scores=None,
+        trak_kwargs=None,
     ) -> None:
         """
         Args:
@@ -43,27 +45,49 @@ class DDA:
             val_set_size (optional):
                 The size of the validation dataset. Required if the dataloader
                 does not have a dataset attribute.
+            trak_scores (optional):
+                Precomputed TRAK scores. If not provided, they will be computed
+                from scratch.
+            trak_kwargs (optional):
+                Additional keyword arguments to be passed to
+                `attrib.get_trak_matrix`.
         """
         self.model = model
         self.checkpoints = checkpoints
-        self.train_dataloader = train_dataloader
-        self.val_dataloader = val_dataloader
+        self.dataloaders = {"train": train_dataloader, "val": val_dataloader}
         self.group_indices = group_indices
-        try:
-            self.train_set_size = len(train_dataloader.dataset)
-            self.val_set_size = len(val_dataloader.dataset)
-        except AttributeError as e:
-            print(
-                f"No dataset attribute found in train_dataloader or val_dataloader. {e}"
+
+        if trak_scores is not None:
+            self.trak_scores = trak_scores
+        else:
+            try:
+                self.train_set_size = len(train_dataloader.dataset)
+                self.val_set_size = len(val_dataloader.dataset)
+            except AttributeError as e:
+                print(
+                    f"No dataset attribute found in train_dataloader or val_dataloader. {e}"
+                )
+                if train_set_size is None or val_set_size is None:
+                    raise ValueError(
+                        "train_set_size and val_set_size must be specified if "
+                        "train_dataloader and val_dataloader do not have a "
+                        "dataset attribute."
+                    ) from e
+                self.train_set_size = train_set_size
+                self.val_set_size = val_set_size
+
+            # Step 1: compute TRAK scores
+            trak_scores = get_trak_matrix(
+                train_dl=self.dataloaders["train"],
+                val_dl=self.dataloaders["val"],
+                model=self.model,
+                ckpts=self.checkpoints,
+                train_set_size=self.train_set_size,
+                val_set_size=self.val_set_size,
+                **trak_kwargs,
             )
-            if train_set_size is None or val_set_size is None:
-                raise ValueError(
-                    "train_set_size and val_set_size must be specified if "
-                    "train_dataloader and val_dataloader do not have a "
-                    "dataset attribute."
-                ) from e
-            self.train_set_size = train_set_size
-            self.val_set_size = val_set_size
+
+            self.trak_scores = trak_scores
 
     def get_group_losses(self, model, val_dl, group_indices) -> list:
         """Returns a list of losses for each group in the validation set."""
@@ -121,7 +145,7 @@ class DDA:
         )
         return sorted_indices[num_to_discard:]
 
-    def debias(self, use_heuristic=True, num_to_discard=None, trak_kwargs=None):
+    def debias(self, use_heuristic=True, num_to_discard=None):
         """
         Debiases the training process by constructing a new training set that
         excludes examples which harm worst-group accuracy.
@@ -141,29 +165,21 @@ class DDA:
                 A list of indices for the training examples that should be
                 included in the debiased training set.
         """
-        # Step 1: compute TRAK scores
-        trak_scores = get_trak_matrix(
-            train_dl=self.train_dataloader,
-            val_dl=self.val_dataloader,
-            model=self.model,
-            ckpts=self.checkpoints,
-            train_set_size=self.train_set_size,
-            val_set_size=self.val_set_size,
-            **trak_kwargs,
-        )
 
-        # Step 2: compute group alignment scores
+        # Step 2 (Step 1 is to compute TRAK scores):
+        # compute group alignment scores
         group_losses = self.get_group_losses(
             model=self.model,
-            val_dl=self.val_dataloader,
+            val_dl=self.dataloaders["val"],
             group_indices=self.group_indices,
         )
 
         group_alignment_scores = self.compute_group_alignment_scores(
-            trak_scores, self.group_indices, group_losses
+            self.trak_scores, self.group_indices, group_losses
         )
 
-        # Step 3: construct new training set
+        # Step 3:
+        # construct new training set
         debiased_train_inds = self.get_debiased_train_indices(
             group_alignment_scores,
             use_heuristic=use_heuristic,
