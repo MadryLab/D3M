@@ -94,6 +94,12 @@ class DDA:
         Returns:
             a list of group alignment scores for each training example
         """
+        n_groups = len(set(group_indices))
+        group_alignment_scores = [
+            group_losses[i] * trak_scores[group_indices == i].mean()
+            for i in range(n_groups)
+        ]
+        return group_alignment_scores
 
     def get_debiased_train_indices(
         self, group_alignment_scores, use_heuristic=True, num_to_discard=None
@@ -105,17 +111,15 @@ class DDA:
         """
         if use_heuristic:
             return [i for i, score in enumerate(group_alignment_scores) if score >= 0]
-        else:
-            if num_to_discard is None:
-                raise ValueError(
-                    "num_to_discard must be specified if not using heuristic."
-                )
 
-            sorted_indices = sorted(
-                range(len(group_alignment_scores)),
-                key=lambda i: group_alignment_scores[i],
-            )
-            return sorted_indices[num_to_discard:]
+        if num_to_discard is None:
+            raise ValueError("num_to_discard must be specified if not using heuristic.")
+
+        sorted_indices = sorted(
+            range(len(group_alignment_scores)),
+            key=lambda i: group_alignment_scores[i],
+        )
+        return sorted_indices[num_to_discard:]
 
     def debias(self, use_heuristic=True, num_to_discard=None, trak_kwargs=None):
         """
@@ -149,11 +153,14 @@ class DDA:
         )
 
         # Step 2: compute group alignment scores
-        losses = [loss(model(x)) for (x, y) in val_dataloader]  # TODO
-        group_losses = TODO
+        group_losses = self.get_group_losses(
+            model=self.model,
+            val_dl=self.val_dataloader,
+            group_indices=self.group_indices,
+        )
 
-        group_alignment_scores = compute_group_alignment_scores(
-            trak_scores, group_indices, group_losses
+        group_alignment_scores = self.compute_group_alignment_scores(
+            trak_scores, self.group_indices, group_losses
         )
 
         # Step 3: construct new training set
