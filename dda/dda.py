@@ -3,6 +3,7 @@ This module implements the Debiasing through Data Attribution (DDA) method.
 """
 
 import torch
+import numpy as np
 from torch.nn import functional as F
 
 from .attrib import get_trak_matrix
@@ -24,6 +25,7 @@ class DDA:
         val_set_size=None,
         trak_scores=None,
         trak_kwargs=None,
+        device='cuda',
     ) -> None:
         """
         Args:
@@ -51,11 +53,14 @@ class DDA:
             trak_kwargs (optional):
                 Additional keyword arguments to be passed to
                 `attrib.get_trak_matrix`.
+            device (optional):
+                pytorch device
         """
         self.model = model
         self.checkpoints = checkpoints
         self.dataloaders = {"train": train_dataloader, "val": val_dataloader}
         self.group_indices = group_indices
+        self.device = device
 
         if trak_scores is not None:
             self.trak_scores = trak_scores
@@ -99,7 +104,6 @@ class DDA:
                     val_set_size=self.val_set_size,
                 )
 
-
             self.trak_scores = trak_scores
 
     def get_group_losses(self, model, val_dl, group_indices) -> list:
@@ -108,8 +112,8 @@ class DDA:
         model.eval()
         with torch.no_grad():
             for inputs, labels in val_dl:
-                outputs = model(inputs)
-                loss = F.cross_entropy(outputs, labels, reduction="none")
+                outputs = model(inputs.to(self.device))
+                loss = F.cross_entropy(outputs, labels.to(self.device), reduction="none")
                 losses.append(loss)
         losses = torch.cat(losses)
 
@@ -133,7 +137,7 @@ class DDA:
         """
         n_groups = len(set(group_indices))
         group_alignment_scores = [
-            group_losses[i] * trak_scores[group_indices == i].mean()
+            group_losses[i] * trak_scores[np.array(group_indices) == i].mean()
             for i in range(n_groups)
         ]
         return group_alignment_scores
