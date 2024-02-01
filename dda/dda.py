@@ -77,15 +77,28 @@ class DDA:
                 self.val_set_size = val_set_size
 
             # Step 1: compute TRAK scores
-            trak_scores = get_trak_matrix(
-                train_dl=self.dataloaders["train"],
-                val_dl=self.dataloaders["val"],
-                model=self.model,
-                ckpts=self.checkpoints,
-                train_set_size=self.train_set_size,
-                val_set_size=self.val_set_size,
-                **trak_kwargs,
-            )
+
+            # Step 1: compute TRAK scores
+            if trak_kwargs is not None:
+                trak_scores = get_trak_matrix(
+                    train_dl=self.dataloaders["train"],
+                    val_dl=self.dataloaders["val"],
+                    model=self.model,
+                    ckpts=self.checkpoints,
+                    train_set_size=self.train_set_size,
+                    val_set_size=self.val_set_size,
+                    **trak_kwargs,
+                )
+            else:
+                trak_scores = get_trak_matrix(
+                    train_dl=self.dataloaders["train"],
+                    val_dl=self.dataloaders["val"],
+                    model=self.model,
+                    ckpts=self.checkpoints,
+                    train_set_size=self.train_set_size,
+                    val_set_size=self.val_set_size,
+                )
+
 
             self.trak_scores = trak_scores
 
