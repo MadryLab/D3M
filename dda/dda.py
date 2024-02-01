@@ -137,9 +137,10 @@ class DDA:
         """
         n_groups = len(set(group_indices))
         group_alignment_scores = [
-            group_losses[i] * trak_scores[np.array(group_indices) == i].mean()
+            group_losses[i] * trak_scores[:, np.array(group_indices) == i].mean(axis=1)
             for i in range(n_groups)
         ]
+        print(group_alignment_scores[0].shape)
         return group_alignment_scores
 
     def get_debiased_train_indices(
