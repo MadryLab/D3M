@@ -25,7 +25,7 @@ class DDA:
         val_set_size=None,
         trak_scores=None,
         trak_kwargs=None,
-        device='cuda',
+        device="cuda",
     ) -> None:
         """
         Args:
@@ -82,8 +82,6 @@ class DDA:
                 self.val_set_size = val_set_size
 
             # Step 1: compute TRAK scores
-
-            # Step 1: compute TRAK scores
             if trak_kwargs is not None:
                 trak_scores = get_trak_matrix(
                     train_dl=self.dataloaders["train"],
@@ -113,7 +111,9 @@ class DDA:
         with torch.no_grad():
             for inputs, labels in val_dl:
                 outputs = model(inputs.to(self.device))
-                loss = F.cross_entropy(outputs, labels.to(self.device), reduction="none")
+                loss = F.cross_entropy(
+                    outputs, labels.to(self.device), reduction="none"
+                )
                 losses.append(loss)
         losses = torch.cat(losses)
 

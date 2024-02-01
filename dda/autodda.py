@@ -5,6 +5,7 @@ Instead, AutoDDA levereages the attribution (TRAK) scores to *automatically
 discover* coherent groups in the validation dataset where the model struggles.
 """
 
+import torch
 import numpy as np
 from sklearn.decomposition import PCA
 
@@ -72,15 +73,25 @@ class AutoDDA(DDA):
                 self.val_set_size = val_set_size
 
             # Step 1: compute TRAK scores
-            trak_scores = get_trak_matrix(
-                train_dl=self.dataloaders["train"],
-                val_dl=self.dataloaders["val"],
-                model=self.model,
-                ckpts=self.checkpoints,
-                train_set_size=self.train_set_size,
-                val_set_size=self.val_set_size,
-                **trak_kwargs,
-            )
+            if trak_kwargs is not None:
+                trak_scores = get_trak_matrix(
+                    train_dl=self.dataloaders["train"],
+                    val_dl=self.dataloaders["val"],
+                    model=self.model,
+                    ckpts=self.checkpoints,
+                    train_set_size=self.train_set_size,
+                    val_set_size=self.val_set_size,
+                    **trak_kwargs,
+                )
+            else:
+                trak_scores = get_trak_matrix(
+                    train_dl=self.dataloaders["train"],
+                    val_dl=self.dataloaders["val"],
+                    model=self.model,
+                    ckpts=self.checkpoints,
+                    train_set_size=self.train_set_size,
+                    val_set_size=self.val_set_size,
+                )
 
             self.trak_scores = trak_scores
 
@@ -107,22 +118,32 @@ class AutoDDA(DDA):
             A list of pseudogroup indices.
         """
 
-        # Normalize TRAK scores
-        # TODO: check if necessary
-        normalized_trak_scores = (trak_scores - trak_scores.mean()) / trak_scores.std()
+        # Normalize TRAK scores, and move to GPU
+        S = torch.tensor(trak_scores).cuda()
+        S /= S.norm(dim=1, keepdim=True).float() + 1e-5
 
         # Group scores by label
         val_labels = np.array(val_labels)
         trak_scores_by_label = {}
         for label in set(val_labels):
-            trak_scores_by_label[label] = trak_scores[val_labels == label].numpy()
+            trak_scores_by_label[label] = S[val_labels == label]
 
         # Perform PCA on each TRAK matrix
         pseudogroups = np.zeros_like(trak_scores[:, 0].numpy())
 
+        pca_projs = {}
         for label, trak_matrix in trak_scores_by_label.items():
             pca = PCA(n_components=1)
-            pca_result = pca.fit_transform(trak_matrix)
-            #  TODO: update pseudogroups
+            pca.fit(trak_matrix.cpu().numpy())
+            pcs = torch.tensor(pca.components_).float().cuda()
+            projs = (trak_matrix @ pcs.T).cpu().numpy().T
+            pca_projs[label] = projs[0]
+
+        pseudogroups = np.zeros_like(trak_scores[:, 0])
+        for label, pca_cmp in pca_projs.items():
+            _pseudogroups = np.zeros_like(pca_cmp)
+            _pseudogroups[pca_cmp > 0] = 1.0
+            _pseudogroups += 2 * label
+            pseudogroups[val_labels == label] = _pseudogroups
 
         return pseudogroups.tolist()
