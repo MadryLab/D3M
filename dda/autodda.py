@@ -24,6 +24,7 @@ class AutoDDA(DDA):
         val_set_size=None,
         trak_scores=None,
         trak_kwargs=None,
+        device="cuda",
     ) -> None:
         """
         Args:
@@ -48,10 +49,13 @@ class AutoDDA(DDA):
             trak_kwargs (optional):
                 Additional keyword arguments to be passed to
                 `attrib.get_trak_matrix`.
+            device (optional):
+                torch device
         """
         self.model = model
         self.checkpoints = checkpoints
         self.dataloaders = {"train": train_dataloader, "val": val_dataloader}
+        self.device = device
 
         if trak_scores is not None:
             self.trak_scores = trak_scores
@@ -119,8 +123,8 @@ class AutoDDA(DDA):
         """
 
         # Normalize TRAK scores, and move to GPU
-        S = torch.tensor(trak_scores).cuda()
-        S /= S.norm(dim=1, keepdim=True).float() + 1e-5
+        S = torch.tensor(trak_scores.T).contiguous().cuda().float()
+        S /= S.norm(dim=1, keepdim=True) + 1e-5
 
         # Group scores by label
         val_labels = np.array(val_labels)
@@ -129,7 +133,7 @@ class AutoDDA(DDA):
             trak_scores_by_label[label] = S[val_labels == label]
 
         # Perform PCA on each TRAK matrix
-        pseudogroups = np.zeros_like(trak_scores[:, 0].numpy())
+        pseudogroups = np.zeros(self.val_set_size)
 
         pca_projs = {}
         for label, trak_matrix in trak_scores_by_label.items():
@@ -139,7 +143,6 @@ class AutoDDA(DDA):
             projs = (trak_matrix @ pcs.T).cpu().numpy().T
             pca_projs[label] = projs[0]
 
-        pseudogroups = np.zeros_like(trak_scores[:, 0])
         for label, pca_cmp in pca_projs.items():
             _pseudogroups = np.zeros_like(pca_cmp)
             _pseudogroups[pca_cmp > 0] = 1.0
