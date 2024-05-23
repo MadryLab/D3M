@@ -9,11 +9,11 @@ import torch
 import numpy as np
 from sklearn.decomposition import PCA
 
-from .dda import DDA
+from .d3m import D3M
 from .attrib import get_trak_matrix
 
 
-class AutoDDA(DDA):
+class AutoDDA(D3M):
     def __init__(
         self,
         model,

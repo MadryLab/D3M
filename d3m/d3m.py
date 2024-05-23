@@ -9,9 +9,9 @@ from torch.nn import functional as F
 from .attrib import get_trak_matrix
 
 
-class DDA:
+class D3M:
     """
-    Debiasing through Data Attribution
+    Data Debiasing with Datamodels
     """
 
     def __init__(
